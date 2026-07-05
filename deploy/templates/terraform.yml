@@ -3,9 +3,6 @@ spec:
     module:
       description: "Terraform module to deploy (subdirectory name under terraform_dir)"
       type: string
-      options:
-        - keycloak
-        - vault
     terraform_dir:
       description: "Path to terraform root from the repo root"
       type: string

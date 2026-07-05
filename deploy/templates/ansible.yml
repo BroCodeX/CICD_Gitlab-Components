@@ -3,10 +3,6 @@ spec:
     playbook:
       description: "Playbook name (without .yml extension)"
       type: string
-      options:
-        - keycloak
-        - vault
-        - ldap
     inventory:
       description: "Path to inventory file"
       type: string
