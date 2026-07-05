@@ -1,0 +1,131 @@
+spec:
+  inputs:
+    playbook:
+      description: "Playbook name (without .yml extension)"
+      type: string
+      options:
+        - keycloak
+        - vault
+        - ldap
+    inventory:
+      description: "Path to inventory file"
+      type: string
+      default: "inventory/inventory.yml"
+    ansible_dir:
+      description: "Path to ansible dir from the repo root"
+      type: string
+      default: "./ansible"
+    limit:
+      description: "Limit to host or group names (comma separated)"
+      type: string
+      default: ""
+    needs:
+      description: Job needs
+      type: array
+      default: []
+    ansible_tags:
+      description: "Ansible tags (comma separated)"
+      type: string
+      default: ""
+    extra_args:
+      description: "Extra args for ansible-playbook"
+      type: string
+      default: ""
+    has_vault:
+      description: "Use --vault-password-file"
+      type: boolean
+      default: false
+    ansible_image:
+      description: "Docker image with ansible (build your own and pass it here)"
+      type: string
+    runner_tags:
+      description: "GitLab runner tags"
+      type: array
+      default:
+        - yandex
+        - docker
+    stage:
+      description: "Deploy job stage"
+      type: string
+      default: deploy
+    rules_config:
+      description: "GitLab CI rules applied to both check and deploy jobs"
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+          when: manual
+        - if: $CI_COMMIT_BRANCH == "master"
+          changes:
+            - $[[ inputs.ansible_dir ]]/
+          when: on_success
+        - if: $CI_COMMIT_BRANCH == "master"
+          when: manual
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+---
+
+variables:
+  ANSIBLE_FORCE_COLOR: "true"
+  ANSIBLE_USER: "ansible"
+  ANSIBLE_DIR: $[[ inputs.ansible_dir ]]
+
+# =====
+# Check diff playbook
+# =====
+"$[[ inputs.playbook ]] - $[[ inputs.limit ]] - $[[ inputs.ansible_tags ]] - check":
+  image: $[[ inputs.ansible_image ]]
+  tags: $[[ inputs.runner_tags ]]
+  before_script:
+    - cd ${ANSIBLE_DIR}/
+    - if [ -f requirements.yml ]; then ansible-galaxy install -r requirements.yml; fi
+    - eval $(ssh-agent -s) && cat "$ANSIBLE_SSH_PRIVATE_KEY" | base64 -d | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - cat "$SSH_KNOWN_HOSTS" | base64 -d > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  variables:
+    ANSIBLE_ARGS: >-
+      --inventory $[[ inputs.inventory ]]
+      --limit $[[ inputs.limit ]]
+      --tags $[[ inputs.ansible_tags ]]
+      --user ${ANSIBLE_USER}
+      $[[ inputs.extra_args ]]
+  stage: $[[ inputs.stage ]]
+  needs: $[[ inputs.needs ]]
+  script:
+    - if $[[ inputs.has_vault ]]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --vault-password-file ${ANSIBLE_VAULT_PASSWORD_FILE}"; fi
+    - |
+      echo "=== Ansible configuration ==="
+      printf '%s\n' "Playbook: $[[ inputs.playbook ]].yml"
+      printf '%s\n' "Arguments: ${ANSIBLE_ARGS:-<none>}"
+    - ansible-playbook ${ANSIBLE_ARGS} $[[ inputs.playbook ]].yml --check --diff --become
+  rules: $[[ inputs.rules_config ]]
+
+# =====
+# Deploy playbook
+# =====
+"$[[ inputs.playbook ]] - $[[ inputs.limit ]] - $[[ inputs.ansible_tags ]] - deploy":
+  image: $[[ inputs.ansible_image ]]
+  tags: $[[ inputs.runner_tags ]]
+  before_script:
+    - cd ${ANSIBLE_DIR}/
+    - if [ -f requirements.yml ]; then ansible-galaxy install -r requirements.yml; fi
+    - eval $(ssh-agent -s) && cat "$ANSIBLE_SSH_PRIVATE_KEY" | base64 -d | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - cat "$SSH_KNOWN_HOSTS" | base64 -d > ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  variables:
+    ANSIBLE_ARGS: >-
+      --inventory $[[ inputs.inventory ]]
+      --limit $[[ inputs.limit ]]
+      --tags $[[ inputs.ansible_tags ]]
+      --user ${ANSIBLE_USER}
+      $[[ inputs.extra_args ]]
+  stage: $[[ inputs.stage ]]
+  script:
+    - if $[[ inputs.has_vault ]]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --vault-password-file ${ANSIBLE_VAULT_PASSWORD_FILE}"; fi
+    - ansible-playbook ${ANSIBLE_ARGS} $[[ inputs.playbook ]].yml --diff --become
+  needs:
+    - "$[[ inputs.playbook ]] - $[[ inputs.limit ]] - $[[ inputs.ansible_tags ]] - check"
+  rules: $[[ inputs.rules_config ]]

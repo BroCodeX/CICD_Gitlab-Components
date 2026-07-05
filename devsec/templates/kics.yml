@@ -1,0 +1,88 @@
+spec:
+  inputs:
+    stage:
+      description: Job stage
+      default: scan
+    runner_tags:
+      description: Runner tags
+      type: array
+      default:
+        - yandex
+        - docker
+    allow_failure:
+      description: Allow job to fail
+      type: boolean
+      default: true
+    needs:
+      description: Job needs
+      type: array
+      default: []
+    target:
+      description: What to scan (ansible, terraform, etc)
+      default: ansible
+    kics_image:
+      description: Image for kics scanner
+      default: "checkmarx/kics:alpine"
+    report_format:
+      description: Type of reports
+      type: string
+      default: "json"
+    severity:
+      description: |
+        Severities of security issues to be displayed.
+        Allowed values: HIGH, CRITICAL, MEDIUM, LOW, UNKNOWN (case-insensitive).
+        Specify multiple values separated by comma without spaces.
+        Leave empty to disable fail-on-severity behavior.
+      default: HIGH,CRITICAL
+    rules_kics_config:
+      description: GitLab CI rules for the KICS job
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          when: manual
+        - if: $CI_OPEN_MERGE_REQUESTS
+          when: never
+        - if: $CI_COMMIT_BRANCH
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+---
+
+variables:
+  SCAN_SEVERITY: "$[[ inputs.severity ]]"
+  KICS_IMAGE: "$[[ inputs.kics_image ]]"
+
+"kics-$[[ inputs.target ]]":
+  stage: $[[ inputs.stage ]]
+  tags: $[[ inputs.runner_tags ]]
+  needs: $[[ inputs.needs ]]
+  variables:
+    REPORT_PATH: "security-reports"
+  before_script:
+    - mkdir -p ${REPORT_PATH}
+  image:
+    name: $KICS_IMAGE
+    entrypoint: [""]
+  rules: $[[ inputs.rules_kics_config ]]
+  script:
+    - |
+      if [ ! -d "./$[[ inputs.target ]]" ]; then
+        echo "ERROR: Directory ./$[[ inputs.target ]] does not exist"
+        exit 1
+      fi
+    - FAIL_ON_ARG="--fail-on $(echo "${SCAN_SEVERITY}" | tr '[:upper:]' '[:lower:]')"
+    - |
+      kics scan \
+        --path ./$[[ inputs.target ]] \
+        --report-formats $[[ inputs.report_format ]] \
+        --output-path ${REPORT_PATH} \
+        --output-name kics-results \
+        --no-progress \
+        --exclude-paths ".git" \
+        ${FAIL_ON_ARG}
+  artifacts:
+    when: always
+    paths:
+      - "$REPORT_PATH/"
+    expire_in: 1 week
+    expose_as: 'KICS Report'
+  allow_failure: $[[ inputs.allow_failure ]]

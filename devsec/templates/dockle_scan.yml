@@ -1,0 +1,109 @@
+spec:
+  inputs:
+    stage:
+      description: Job stage
+      default: scan
+    runner_tags:
+      description: Runner tags
+      type: array
+      default:
+        - yandex
+        - docker
+    allow_failure:
+      description: Allow job to fail
+      type: boolean
+      default: true
+    needs:
+      description: Job needs
+      type: array
+      default: []
+    job_name:
+      description: Job name suffix
+      type: string
+      default: "image"
+    image:
+      description: |
+        Docker image reference to scan (e.g. $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA).
+        Registry credentials are picked up automatically from DOCKLE_USERNAME / DOCKLE_PASSWORD.
+      type: string
+      default: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    exit_level:
+      type: string
+      description: |
+        Exit with non-zero code when findings at or above this level exist.
+        Accepted values: fatal | warn | info
+      default: "fatal"
+    output_format:
+      type: string
+      description: |
+        Output format for CI log display.
+        Accepted values: list | json | sarif
+      default: "list"
+    dockle_version:
+      type: string
+      description: Dockle release version to download
+      default: "0.4.14"
+    registry:
+      description: Container registry URL to authenticate e.g. "${CI_REGISTRY_IMAGE}"
+      type: string
+      default: ""
+    registry_user:
+      description: Container registry username e.g. "$CI_REGISTRY_USER"
+      default: ""
+    registry_password:
+      description: Container registry password like e.g. "$CI_REGISTRY_PASSWORD"
+      default: ""
+    rules_config:
+      description: Gitlab CI rules
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          when: manual
+        - if: $CI_OPEN_MERGE_REQUESTS
+          when: never
+        - if: $CI_COMMIT_BRANCH
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+---
+
+variables:
+  RUNTIME_IMAGE: "alpine:3.21"
+
+"dockle-$[[ inputs.job_name ]]":
+  stage: $[[ inputs.stage ]]
+  tags: $[[ inputs.runner_tags ]]
+  image: $RUNTIME_IMAGE
+  variables:
+    REPORT_PATH: "security-reports"
+    DOCKLE_AUTH_URL: $[[ inputs.registry ]]
+    DOCKLE_USERNAME: $[[ inputs.registry_user ]]
+    DOCKLE_PASSWORD: $[[ inputs.registry_password ]]
+  before_script:
+    - apk add --no-cache curl
+    - |
+      curl -sSfL \
+        "https://github.com/goodwithtech/dockle/releases/download/v$[[ inputs.dockle_version ]]/dockle_$[[ inputs.dockle_version ]]_Linux-64bit.tar.gz" \
+        | tar -xzf - -C /usr/local/bin dockle
+    - chmod +x /usr/local/bin/dockle
+  allow_failure: $[[ inputs.allow_failure ]]
+  needs: $[[ inputs.needs ]]
+  rules: $[[ inputs.rules_config ]]
+  script:
+    - mkdir -p "${REPORT_PATH}"
+    - |
+      dockle \
+        -f json \
+        -o "${REPORT_PATH}/dockle-$[[ inputs.job_name ]].json" \
+        "$[[ inputs.image ]]" || true
+    - |
+      dockle \
+        --exit-code 1 \
+        --exit-level $[[ inputs.exit_level ]] \
+        -f $[[ inputs.output_format ]] \
+        "$[[ inputs.image ]]"
+  artifacts:
+    expose_as: "Dockle Report"
+    when: always
+    paths:
+      - "$REPORT_PATH/"
+    expire_in: 1 week

@@ -1,0 +1,190 @@
+spec:
+  inputs:
+    module:
+      description: "Terraform module to deploy (subdirectory name under terraform_dir)"
+      type: string
+      options:
+        - keycloak
+        - vault
+    terraform_dir:
+      description: "Path to terraform root from the repo root"
+      type: string
+      default: "terraform"
+    terraform_image:
+      description: "Docker image with terraform"
+      type: string
+    needs:
+      description: "Job needs for the validate job"
+      type: array
+      default: []
+    runner_tags:
+      description: "GitLab runner tags"
+      type: array
+      default:
+        - yandex
+        - docker
+    validate_stage:
+      description: "Validate job stage"
+      type: string
+      default: validate
+    plan_stage:
+      description: "Plan job stage"
+      type: string
+      default: plan
+    stage:
+      description: "Apply job stage"
+      type: string
+      default: deploy
+    terraform_parallelism:
+      description: "Terraform parallelism (-parallelism)"
+      type: string
+      default: "10"
+    tf_plugin_cache_dir:
+      description: "Terraform plugin cache directory"
+      type: string
+      default: "${CI_PROJECT_DIR}/.terraform-plugin-cache"
+    plan_file:
+      description: "Terraform plan output file name (relative to module directory)"
+      type: string
+      default: "plan.tfplan"
+    terraform_cli_config:
+      description: "Path to terraform CLI config file (sets TF_CLI_CONFIG_FILE when set)"
+      type: string
+      default: ".terraform-cli-config.tfrc"
+    extra_init_args:
+      description: "Extra args for terraform init"
+      type: string
+      default: ""
+    extra_plan_args:
+      description: "Extra args for terraform plan"
+      type: string
+      default: ""
+    extra_apply_args:
+      description: "Extra args for terraform apply"
+      type: string
+      default: ""
+    extra_destroy_args:
+      description: "Extra args for terraform destroy"
+      type: string
+      default: ""
+    allow_failure:
+      description: Allow job to fail
+      type: boolean
+      default: true
+    rules_config:
+      description: "GitLab CI rules applied to validate, plan, and apply jobs"
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+          when: manual
+        - if: $CI_COMMIT_BRANCH == "main"
+          changes:
+            - $[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/
+          when: on_success
+        - if: $CI_COMMIT_BRANCH == "main"
+          when: manual
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+---
+
+variables:
+  TF_IN_AUTOMATION: "true"
+  TF_PARALLELISM: "$[[ inputs.terraform_parallelism ]]"
+  TF_PLUGIN_CACHE_DIR: "$[[ inputs.tf_plugin_cache_dir ]]"
+  TERRAFORM_DIR: $[[ inputs.terraform_dir ]]
+  TF_MODULE: $[[ inputs.module ]]
+  TF_PLAN_FILE: "$[[ inputs.plan_file ]]"
+  TF_CLI_CONFIG: "$[[ inputs.terraform_cli_config ]]"
+  TF_INIT_ARGS: "$[[ inputs.extra_init_args ]]"
+  TF_PLAN_ARGS: "$[[ inputs.extra_plan_args ]]"
+  TF_APPLY_ARGS: "$[[ inputs.extra_apply_args ]]"
+  TF_DESTROY_ARGS: "$[[ inputs.extra_destroy_args ]]"
+
+.terraform_base:
+  image:
+    name: $[[ inputs.terraform_image ]]
+    entrypoint: [""]
+  tags: $[[ inputs.runner_tags ]]
+  before_script: &before_script_terraform
+    - mkdir -p ${TF_PLUGIN_CACHE_DIR}
+    - if [ -n "${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}" ]; then export TF_CLI_CONFIG_FILE="${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}"; fi
+    - cd ${TERRAFORM_DIR}/${TF_MODULE}
+    - terraform --version
+    - terraform init -input=false ${TF_INIT_ARGS}
+  cache: &tf_cache
+    key:
+      files:
+        - $CI_PROJECT_DIR/$[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform.lock.hcl
+    paths:
+      - ${TF_PLUGIN_CACHE_DIR}
+      - $[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform
+    policy: pull-push
+
+# =====
+# Validate
+# =====
+"$[[ inputs.module ]] - validate":
+  extends: .terraform_base
+  stage: $[[ inputs.validate_stage ]]
+  needs: $[[ inputs.needs ]]
+  before_script: *before_script_terraform
+  cache: *tf_cache
+  script:
+    - terraform validate
+  rules: $[[ inputs.rules_config ]]
+
+# =====
+# Plan
+# =====
+"$[[ inputs.module ]] - plan":
+  extends: .terraform_base
+  stage: $[[ inputs.plan_stage ]]
+  before_script: *before_script_terraform
+  cache: *tf_cache
+  script:
+    - |
+      echo "=== Terraform plan ==="
+      printf '%s\n' "Module: ${TF_MODULE}"
+      printf '%s\n' "Directory: ${TERRAFORM_DIR}/${TF_MODULE}"
+      printf '%s\n' "Plan file: ${TF_PLAN_FILE}"
+    - terraform plan -parallelism=${TF_PARALLELISM} -input=false -out=${TF_PLAN_FILE} ${TF_PLAN_ARGS}
+  artifacts:
+    paths:
+      - $[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/${TF_PLAN_FILE}
+    expire_in: 1 week
+  needs:
+    - "$[[ inputs.module ]] - validate"
+  rules: $[[ inputs.rules_config ]]
+
+# =====
+# Apply
+# =====
+"$[[ inputs.module ]] - apply":
+  extends: .terraform_base
+  stage: $[[ inputs.stage ]]
+  before_script: *before_script_terraform
+  cache:
+    <<: *tf_cache
+    policy: pull
+  script:
+    - terraform apply -parallelism=${TF_PARALLELISM} -auto-approve ${TF_APPLY_ARGS} ${TF_PLAN_FILE}
+  needs:
+    - job: "$[[ inputs.module ]] - plan"
+      artifacts: true
+  rules: $[[ inputs.rules_config ]]
+
+# =====
+# Destroy
+# =====
+"$[[ inputs.module ]] - destroy":
+  extends: .terraform_base
+  stage: $[[ inputs.stage ]]
+  before_script: *before_script_terraform
+  cache:
+    <<: *tf_cache
+    policy: pull
+  script:
+    - terraform destroy -parallelism=${TF_PARALLELISM} -auto-approve ${TF_DESTROY_ARGS}
+  needs:
+    - "$[[ inputs.module ]] - apply"
+  rules: $[[ inputs.rules_config ]]

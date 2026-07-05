@@ -1,0 +1,126 @@
+spec:
+  inputs:
+    image_name:
+      description: "Full image name including registry path (e.g. registry.example.com/group/project/app)"
+      type: string
+    tag:
+      description: Image tag
+      default: "${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}"
+    latest_image_tag:
+      description: Image tag with 'latest' suffix. Pushed if push_to_latest set to true
+      default: "${CI_COMMIT_REF_SLUG}-latest"
+    push_to_latest:
+      description: If true push image also to latest_image_tag
+      type: boolean
+      default: false
+    context:
+      description: "Docker build context path"
+      type: string
+      default: "."
+    dockerfile_dir:
+      description: "Directory containing the Dockerfile (passed as --local dockerfile=<dir>)"
+      type: string
+      default: "."
+    dockerfile_name:
+      description: "Dockerfile filename inside dockerfile_dir"
+      type: string
+      default: "Dockerfile"
+    registry:
+      description: "Container registry URL to authenticate against"
+      type: string
+      default: "${CI_REGISTRY_IMAGE}"
+    registry_user:
+      description: "Registry username"
+      type: string
+      default: $CI_REGISTRY_USER
+    registry_password:
+      description: "Registry password or token"
+      type: string
+      default: $CI_REGISTRY_PASSWORD
+    buildctl_extra_args:
+      description: "Extra flags appended to buildctl build (e.g. --opt build-arg.VERSION=1.0)"
+      type: string
+      default: ""
+    job_name:
+      description: "CI job name"
+      type: string
+      default: "build"
+    runner_tags:
+      description: "GitLab runner tags"
+      type: array
+      default:
+        - yandex
+        - docker
+    stage:
+      description: "CI stage for the build job"
+      type: string
+      default: build
+    rules_config:
+      description: "GitLab CI rules applied to the build job"
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          changes:
+            - "$[[ inputs.dockerfile_dir ]]/$[[ inputs.dockerfile_name ]]"
+        - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+          changes:
+            - "$[[ inputs.dockerfile_dir ]]/$[[ inputs.dockerfile_name ]]"
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          when: manual
+        - if: $CI_OPEN_MERGE_REQUESTS
+          when: never
+        - if: $CI_COMMIT_BRANCH
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+    needs:
+      description: Job needs
+      type: array
+      default: []
+---
+
+variables:
+  BUILDKIT_IMAGE: "moby/buildkit:rootless"
+
+"build-$[[ inputs.job_name ]]":
+  stage: $[[ inputs.stage ]]
+  tags: $[[ inputs.runner_tags ]]
+  needs: $[[ inputs.needs ]]
+  image:
+    name: $BUILDKIT_IMAGE
+    entrypoint: [""]
+  variables:
+    BUILD_IMAGE: "$[[ inputs.registry ]]/$[[ inputs.image_name ]]"
+    BUILD_TAG: "$[[ inputs.tag ]]"
+    LATEST_BUILD_TAG: $[[ inputs.latest_image_tag ]]
+    REGISTRY: "$[[ inputs.registry ]]"
+    REGISTRY_USER: "$[[ inputs.registry_user ]]"
+    REGISTRY_PASSWORD: "$[[ inputs.registry_password ]]"
+    BUILDCTL_ARGS: >-
+      --frontend dockerfile.v0
+      --local context=$[[ inputs.context ]]
+      --local dockerfile=$[[ inputs.dockerfile_dir ]]
+      --opt filename=$[[ inputs.dockerfile_name ]]
+      --output type=image,name=${BUILD_IMAGE}:${BUILD_TAG},push=true
+    BUILDCTL_EXTRA_ARGS: "$[[ inputs.buildctl_extra_args ]]"
+  before_script:
+    - |
+      if $[[ inputs.push_to_latest ]]; then
+        BUILDCTL_ARGS="$BUILDCTL_ARGS --output type=image,name=${BUILD_IMAGE}:${LATEST_BUILD_TAG},push=true"
+      fi
+    - mkdir -p ~/.docker
+    - |
+      echo "{\"auths\":{\"${REGISTRY}\":{\"username\":\"${REGISTRY_USER}\",\"password\":\"${REGISTRY_PASSWORD}\"}}}" \
+        > ~/.docker/config.json
+    - |
+      cat > /tmp/buildkit.toml << 'EOF'
+      [registry."docker.io"]
+        mirrors = [
+          "https://dockerhub.timeweb.cloud",
+          "https://cr.yandex/mirror",
+          "https://mirror.gcr.io"
+        ]
+      EOF
+    - echo "BUILDCTL_ARGS=${BUILDCTL_ARGS}"
+  script:
+    - BUILDKITD_FLAGS=--config=/tmp/buildkit.toml buildctl-daemonless.sh build ${BUILDCTL_ARGS} ${BUILDCTL_EXTRA_ARGS}
+  rules: $[[ inputs.rules_config ]]

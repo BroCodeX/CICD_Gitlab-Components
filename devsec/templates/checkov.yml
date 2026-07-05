@@ -1,0 +1,177 @@
+spec:
+  inputs:
+    stage:
+      description: Job stage
+      default: scan
+    runner_tags:
+      description: Runner tags
+      type: array
+      default:
+        - yandex
+        - docker
+    allow_failure:
+      description: Allow job to fail
+      type: boolean
+      default: true
+    needs:
+      description: Job needs
+      type: array
+      default: []
+    target:
+      description: What to scan (ansible, terraform, etc)
+      default: terraform
+    checkov_image:
+      description: Image for checkov scanner
+      default: "bridgecrew/checkov:latest"
+    framework:
+      description: Type of framework to scan
+      type: string
+      default: "all"
+    output_format:
+      description: |
+        Output format(s), comma-separated (cli, json, junitxml, github_failed_only,
+        sarif, csv, spdx, cyclonedx).
+        https://www.checkov.io/2.Basics/CLI%20Command%20Reference.html#cli-command-reference
+      type: string
+      default: "json"
+    check:
+      description: Checks to run, comma-separated check/incident IDs (e.g. CKV_AWS_1,CKV_AWS_2). Leave empty to run all.
+      type: string
+      default: ""
+    skip_check:
+      description: Checks to skip, comma-separated check/incident IDs.
+      type: string
+      default: ""
+    soft_fail:
+      description: Run scan without failing the job regardless of findings (--soft-fail)
+      type: boolean
+      default: false
+    soft_fail_on:
+      description: |
+        Checks or severities that should soft-fail (not fail the job) even when
+        hard-fail-on/severity would otherwise fail it, comma-separated (--soft-fail-on).
+      type: string
+      default: ""
+    compact:
+      description: Do not display code blocks in the CLI output (--compact)
+      type: boolean
+      default: false
+    quiet:
+      description: Display only failed checks in the CLI output (--quiet)
+      type: boolean
+      default: false
+    download_external_modules:
+      description: Download external terraform modules before scanning (--download-external-modules)
+      type: boolean
+      default: false
+    config_file:
+      description: Path to a Checkov config file (--config-file)
+      type: string
+      default: ""
+    var_file:
+      description: Path to a terraform tfvars file (--var-file)
+      type: string
+      default: ""
+    baseline:
+      description: Path to a Checkov baseline file to suppress known findings (--baseline)
+      type: string
+      default: ""
+    extra_args:
+      # https://www.checkov.io/2.Basics/CLI%20Command%20Reference.html#cli-command-reference
+      description: Any extra raw CLI args, appended as-is to the checkov command
+      type: string
+      default: ""
+    severity:
+      description: |
+        Severities of security issues to be displayed.
+        Allowed values: HIGH, CRITICAL, MEDIUM, LOW, UNKNOWN (case-insensitive).
+        Specify multiple values separated by comma without spaces.
+        Leave empty to disable fail-on-severity behavior.
+      default: HIGH,CRITICAL
+    rules_checkov_config:
+      description: GitLab CI rules for the Checkov job
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          when: manual
+        - if: $CI_OPEN_MERGE_REQUESTS
+          when: never
+        - if: $CI_COMMIT_BRANCH
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+---
+
+variables:
+  SCAN_SEVERITY: "$[[ inputs.severity ]]"
+  CHECKOV_IMAGE: "$[[ inputs.checkov_image ]]"
+  OUTPUT_FORMAT: "$[[ inputs.output_format ]]"
+  CHECK_IDS: "$[[ inputs.check ]]"
+  SKIP_CHECK_IDS: "$[[ inputs.skip_check ]]"
+  SOFT_FAIL: "$[[ inputs.soft_fail ]]"
+  SOFT_FAIL_ON: "$[[ inputs.soft_fail_on ]]"
+  COMPACT: "$[[ inputs.compact ]]"
+  QUIET: "$[[ inputs.quiet ]]"
+  DOWNLOAD_EXTERNAL_MODULES: "$[[ inputs.download_external_modules ]]"
+  CONFIG_FILE: "$[[ inputs.config_file ]]"
+  VAR_FILE: "$[[ inputs.var_file ]]"
+  BASELINE_FILE: "$[[ inputs.baseline ]]"
+  EXTRA_ARGS: "$[[ inputs.extra_args ]]"
+
+"checkov-$[[ inputs.target ]]":
+  stage: $[[ inputs.stage ]]
+  tags: $[[ inputs.runner_tags ]]
+  needs: $[[ inputs.needs ]]
+  variables:
+    REPORT_PATH: "security-reports"
+  before_script:
+    - mkdir -p ${REPORT_PATH}
+  image:
+    name: $CHECKOV_IMAGE
+    # https://hub.docker.com/layers/bridgecrew/checkov/3.3.1/
+    entrypoint: [""]
+  rules: $[[ inputs.rules_checkov_config ]]
+  script:
+    - |
+      if [ ! -d "./$[[ inputs.target ]]" ]; then
+        echo "ERROR: Directory ./$[[ inputs.target ]] does not exist"
+        exit 1
+      fi
+    - |
+      CHECKOV_ARGS=(
+        --directory "./$[[ inputs.target ]]"
+        --framework "$[[ inputs.framework ]]"
+        --output-file-path "${REPORT_PATH}"
+      )
+
+      IFS=',' read -ra FORMATS <<< "${OUTPUT_FORMAT}"
+      for fmt in "${FORMATS[@]}"; do
+        CHECKOV_ARGS+=(--output "${fmt}")
+      done
+
+      [ -n "${SCAN_SEVERITY}" ] && CHECKOV_ARGS+=(--hard-fail-on "${SCAN_SEVERITY}")
+      [ -n "${CHECK_IDS}" ] && CHECKOV_ARGS+=(--check "${CHECK_IDS}")
+      [ -n "${SKIP_CHECK_IDS}" ] && CHECKOV_ARGS+=(--skip-check "${SKIP_CHECK_IDS}")
+      [ -n "${CONFIG_FILE}" ] && CHECKOV_ARGS+=(--config-file "${CONFIG_FILE}")
+      [ -n "${VAR_FILE}" ] && CHECKOV_ARGS+=(--var-file "${VAR_FILE}")
+      [ -n "${BASELINE_FILE}" ] && CHECKOV_ARGS+=(--baseline "${BASELINE_FILE}")
+      [ "${SOFT_FAIL}" = "true" ] && CHECKOV_ARGS+=(--soft-fail)
+      [ -n "${SOFT_FAIL_ON}" ] && CHECKOV_ARGS+=(--soft-fail-on "${SOFT_FAIL_ON}")
+      [ "${COMPACT}" = "true" ] && CHECKOV_ARGS+=(--compact)
+      [ "${QUIET}" = "true" ] && CHECKOV_ARGS+=(--quiet)
+
+      if [ "${DOWNLOAD_EXTERNAL_MODULES}" = "true" ]; then
+        CHECKOV_ARGS+=(--download-external-modules true)
+      else
+        CHECKOV_ARGS+=(--skip-download)
+      fi
+
+      echo CHECKOV_ARGS: "${CHECKOV_ARGS[@]}"
+      checkov "${CHECKOV_ARGS[@]}" ${EXTRA_ARGS}
+
+  artifacts:
+    expose_as: 'Checkov Report'
+    when: always
+    paths:
+      - "$REPORT_PATH/"
+    expire_in: 1 week
+  allow_failure: $[[ inputs.allow_failure ]]

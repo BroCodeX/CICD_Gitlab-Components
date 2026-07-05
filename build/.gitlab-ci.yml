@@ -1,0 +1,51 @@
+workflow:
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+    - if: $CI_COMMIT_TAG
+
+stages:
+  - release
+
+.common: &tags
+  tags:
+    - yandex
+    - docker
+
+generate_release_notes:
+  <<: *tags
+  stage: release
+  image: registry.gitlab.com/gitlab-ci-utils/curl-jq
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/
+      when: on_success
+  script:
+    - echo "Parsing description from CHANGELOG.md for tag $CI_COMMIT_TAG..."
+    - awk "/## .*$CI_COMMIT_TAG/{flag=1; next} /^## /{flag=0} flag" CHANGELOG.md | sed '/./,$!d' > release-description.md
+    - |
+      if [ ! -s release-description.md ]; then
+        echo "❌ Error: description for $CI_COMMIT_TAG not found!"
+        echo "Ensure CHANGELOG.md contains a heading '## $CI_COMMIT_TAG' or '## [$CI_COMMIT_TAG]'"
+        exit 1
+      fi
+    - echo "--- Release Notes content ---"
+    - cat release-description.md
+  artifacts:
+    paths:
+      - release-description.md
+
+create-release:
+  <<: *tags
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - job: generate_release_notes
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/
+      when: on_success
+  script:
+    - echo "Creating release for tag $CI_COMMIT_TAG"
+  release:
+    name: Release $CI_COMMIT_TAG
+    tag_name: $CI_COMMIT_TAG
+    description: ./release-description.md

@@ -1,0 +1,84 @@
+spec:
+  inputs:
+    job_name:
+      description: Job name
+      default: lint-dockerfile
+    stage:
+      description: Job stage
+      default: scan
+    runner_tags:
+      description: Runner tags
+      type: array
+      default:
+        - yandex
+        - docker
+    allow_failure:
+      description: Allow job to fail
+      type: boolean
+      default: true
+    needs:
+      description: Job needs
+      type: array
+      default: []
+    hadolint_image:
+      description: Image for hadolint scan
+      default: "hadolint/hadolint:latest-alpine"
+    dockerfile_dir:
+      description: Path to the Dockerfile from the root of the repo
+      type: string
+      default: "./docker"
+    dockerfile_name:
+      description: |
+        Dockerfile name inside `dockerfile_dir`
+      default: "Dockerfile"
+    severity:
+      type: string
+      description: |
+        Exit with failure code only when rules with a
+        severity equal to or above THRESHOLD are violated.
+        Accepted values: error | warning | info | style | ignore | none
+      default: "error"
+    output_format:
+      type: string
+      description: |
+        The output format for the results displayed in the CI log.
+        Accepted values: tty | json | checkstyle | codeclimate | gitlab_codeclimate | gnu | codacy | sonarqube | sarif | junit
+      default: "tty"
+    rules_config:
+      description: Gitlab CI rules
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          when: manual
+        - if: $CI_OPEN_MERGE_REQUESTS
+          when: never
+        - if: $CI_COMMIT_BRANCH
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+---
+
+variables:
+  HADOLINT_IMAGE: "$[[ inputs.hadolint_image ]]"
+
+"hadolint-$[[ inputs.job_name ]]":
+  stage: $[[ inputs.stage ]]
+  tags: $[[ inputs.runner_tags ]]
+  variables:
+    REPORT_PATH: "security-reports"
+    HADOLINT_DOCKERFILE: $[[ inputs.dockerfile_name ]]
+  artifacts:
+    expose_as: 'Hadolint Report'
+    when: always
+    paths:
+      - "$REPORT_PATH/"
+    expire_in: 1 week
+  allow_failure: $[[ inputs.allow_failure ]]
+  needs: $[[ inputs.needs ]]
+  image:
+    name: $HADOLINT_IMAGE
+    entrypoint: [""]
+  rules: $[[ inputs.rules_config ]]
+  script:
+    - mkdir -p ${REPORT_PATH}
+    - hadolint --format json $[[ inputs.dockerfile_dir ]]/$HADOLINT_DOCKERFILE > ${REPORT_PATH}/hadolint-$[[ inputs.dockerfile_name ]].json || true
+    - hadolint --format $[[ inputs.output_format ]] --failure-threshold $[[ inputs.severity ]] $[[ inputs.dockerfile_dir ]]/$HADOLINT_DOCKERFILE

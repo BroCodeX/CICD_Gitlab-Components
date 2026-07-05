@@ -1,0 +1,209 @@
+spec:
+  inputs:
+    release:
+      description: "Helm release name"
+      type: string
+      default: ""
+    chart:
+      description: "Chart to deploy (local path under helm_dir, or a repo/OCI reference)"
+      type: string
+    namespace:
+      description: "Kubernetes namespace"
+      type: string
+    helm_dir:
+      description: "Path to the Helm charts root from the repo root"
+      type: string
+      default: "helm"
+    chart_version:
+      description: "Chart version (--version); leave empty for local charts"
+      type: string
+      default: ""
+    values:
+      description: "Values files, space separated (each is passed with -f)"
+      type: string
+      default: ""
+    create_namespace:
+      description: "Create the namespace if it does not exist (--create-namespace)"
+      type: boolean
+      default: true
+    atomic:
+      description: "Roll back on a failed apply (--rollback-on-failure)"
+      type: boolean
+      default: true
+    wait:
+      description: "Wait for resources to become ready (--wait)"
+      type: boolean
+      default: true
+    timeout:
+      description: "Time to wait for any individual operation (--timeout)"
+      type: string
+      default: "5m"
+    kube_context:
+      description: "Kubeconfig context to use (--kube-context); leave empty for the current context"
+      type: string
+      default: ""
+    kubeconfig:
+      description: "Path to a base64-encoded kubeconfig file, as produced by a GitLab CI/CD variable of type File (--kubeconfig); leave empty for the default"
+      type: string
+      default: "$KUBECONFIG"
+    helm_image:
+      description: "Docker image with helm and the helm-diff plugin"
+      type: string
+    needs:
+      description: Job needs
+      type: array
+      default: []
+    runner_tags:
+      description: "GitLab runner tags"
+      type: array
+      default:
+        - yandex
+        - docker
+    lint_stage:
+      description: "Lint job stage"
+      type: string
+      default: lint
+    diff_stage:
+      description: "Diff job stage"
+      type: string
+      default: diff
+    stage:
+      description: "Apply job stage"
+      type: string
+      default: deploy
+    extra_args:
+      description: "Extra args shared by lint, diff and apply (e.g. --set key=val)"
+      type: string
+      default: ""
+    extra_lint_args:
+      description: "Extra args for helm lint only"
+      type: string
+      default: ""
+    extra_diff_args:
+      description: "Extra args for helm diff only"
+      type: string
+      default: ""
+    extra_apply_args:
+      description: "Extra args for helm upgrade only"
+      type: string
+      default: ""
+    extra_uninstall_args:
+      description: "Extra args for helm uninstall only (e.g. --keep-history)"
+      type: string
+      default: ""
+    rules_config:
+      description: "GitLab CI rules applied to the lint, diff and apply jobs"
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"
+          when: manual
+        - if: $CI_COMMIT_BRANCH == "main"
+          changes:
+            - $[[ inputs.helm_dir ]]/
+          when: on_success
+        - if: $CI_COMMIT_BRANCH == "main"
+          when: manual
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+    allow_failure:
+      description: Allow job to fail
+      type: boolean
+      default: true
+---
+
+variables:
+  HELM_RELEASE: "$[[ inputs.release ]]"
+  HELM_CHART: "$[[ inputs.chart ]]"
+  HELM_NAMESPACE: "$[[ inputs.namespace ]]"
+  HELM_DIR: "$[[ inputs.helm_dir ]]"
+  HELM_ARGS: >-
+    --namespace $[[ inputs.namespace ]]
+    $[[ inputs.extra_args ]]
+
+.helm_base:
+  image: $[[ inputs.helm_image ]]
+  tags: $[[ inputs.runner_tags ]]
+  before_script:
+    - cd ${HELM_DIR}
+    - helm version
+    # Kube target flags, kept separate so the uninstall job can reuse them.
+    - HELM_KUBE=""
+    - if [ -n "$[[ inputs.kube_context ]]" ]; then HELM_KUBE="${HELM_KUBE} --kube-context $[[ inputs.kube_context ]]"; fi
+    - |
+      if [ -n "$[[ inputs.kubeconfig ]]" ]; then
+        KUBECONFIG_DECODED="$(mktemp)"
+        base64 -d "$[[ inputs.kubeconfig ]]" > "${KUBECONFIG_DECODED}"
+        HELM_KUBE="${HELM_KUBE} --kubeconfig ${KUBECONFIG_DECODED}"
+      fi
+    # Concatenate optional shared flags into HELM_ARGS.
+    - HELM_ARGS="${HELM_ARGS} ${HELM_KUBE}"
+    - if [ -n "$[[ inputs.chart_version ]]" ]; then HELM_ARGS="${HELM_ARGS} --version $[[ inputs.chart_version ]]"; fi
+    - for f in $[[ inputs.values ]]; do HELM_ARGS="${HELM_ARGS} -f ${f}"; done
+
+# =====
+# Lint
+# =====
+"$[[ inputs.release ]] - lint":
+  extends: .helm_base
+  stage: $[[ inputs.stage ]]
+  needs: $[[ inputs.needs ]]
+  script:
+    - |
+      echo "=== Helm lint ==="
+      printf '%s\n' "Release: ${HELM_RELEASE}"
+      printf '%s\n' "Chart: ${HELM_CHART}"
+    - |
+      LINT_ARGS=""
+      for f in $[[ inputs.values ]]; do LINT_ARGS="${LINT_ARGS} -f ${f}"; done
+    - helm lint ${HELM_CHART} ${LINT_ARGS} $[[ inputs.extra_args ]] $[[ inputs.extra_lint_args ]]
+  rules: $[[ inputs.rules_config ]]
+
+# =====
+# Diff
+# =====
+"$[[ inputs.release ]] - diff":
+  extends: .helm_base
+  stage: $[[ inputs.stage ]]
+  needs:
+    - "$[[ inputs.release ]] - lint"
+  script:
+    - |
+      echo "=== Helm diff ==="
+      printf '%s\n' "Release: ${HELM_RELEASE}"
+      printf '%s\n' "Chart: ${HELM_CHART}"
+      printf '%s\n' "Namespace: ${HELM_NAMESPACE}"
+    - helm diff upgrade ${HELM_RELEASE} ${HELM_CHART} --install ${HELM_ARGS} $[[ inputs.extra_diff_args ]]
+  rules: $[[ inputs.rules_config ]]
+
+# =====
+# Apply
+# =====
+"$[[ inputs.release ]] - apply":
+  extends: .helm_base
+  stage: $[[ inputs.stage ]]
+  script:
+    # Apply-only flags, not supported by helm-diff.
+    - HELM_ARGS="${HELM_ARGS} --timeout $[[ inputs.timeout ]]"
+    - if $[[ inputs.create_namespace ]]; then HELM_ARGS="${HELM_ARGS} --create-namespace"; fi
+    - if $[[ inputs.wait ]]; then HELM_ARGS="${HELM_ARGS} --wait"; fi
+    - if $[[ inputs.atomic ]]; then HELM_ARGS="${HELM_ARGS} --rollback-on-failure"; fi
+    - helm upgrade --install ${HELM_RELEASE} ${HELM_CHART} ${HELM_ARGS} $[[ inputs.extra_apply_args ]]
+  needs:
+    - "$[[ inputs.release ]] - diff"
+  rules: $[[ inputs.rules_config ]]
+
+# =====
+# Uninstall (manual only)
+# =====
+"$[[ inputs.release ]] - uninstall":
+  extends: .helm_base
+  stage: $[[ inputs.stage ]]
+  script:
+    - |
+      echo "=== Helm uninstall ==="
+      printf '%s\n' "Release: ${HELM_RELEASE}"
+      printf '%s\n' "Namespace: ${HELM_NAMESPACE}"
+    - helm uninstall ${HELM_RELEASE} --namespace ${HELM_NAMESPACE} ${HELM_KUBE} $[[ inputs.extra_uninstall_args ]]
+  needs:
+    - "$[[ inputs.release ]] - apply"
+  rules: $[[ inputs.rules_config ]]

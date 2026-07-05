@@ -1,0 +1,42 @@
+spec:
+  inputs:
+    stage:
+      description: "Job stage"
+      default: "build"
+    context:
+      description: "Build context"
+      default: '.'
+    dockerfile_dir:
+      description: "Path to directory with dockerfile"
+      default: ./docker
+    dockerfile_name:
+      description: |
+        Dockerfile name inside `dockerfile_dir`
+      default: "Dockerfile"
+    image_name:
+      description: Image name like 'nginx' or 'app'
+---
+
+include:
+
+  # Hadolint scan
+  - component: $CI_SERVER_FQDN/components/devsec/hadolint_scan@1
+    inputs:
+      stage: $[[ inputs.stage ]]
+      job_name: "$[[ inputs.dockerfile_name ]]-$[[ inputs.image_name ]]"
+      dockerfile_dir: $[[ inputs.dockerfile_dir ]]
+      dockerfile_name: $[[ inputs.dockerfile_name ]]
+      allow_failure: false
+
+  # Build image
+  - component: $CI_SERVER_FQDN/components/build/build@1
+    inputs:
+      stage: $[[ inputs.stage ]]
+      job_name: $[[ inputs.image_name ]]
+      context: $[[ inputs.context ]]
+      dockerfile_dir: $[[ inputs.dockerfile_dir ]]
+      dockerfile_name: $[[ inputs.dockerfile_name ]]
+      image_name: $[[ inputs.image_name ]]
+      push_to_latest: true
+      needs:
+        - "hadolint-$[[ inputs.dockerfile_name ]]-$[[ inputs.image_name ]]"

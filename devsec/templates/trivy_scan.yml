@@ -1,0 +1,120 @@
+spec:
+  inputs:
+    stage:
+      description: Job stage
+      type: string
+      default: scan
+    runner_tags:
+      description: Runner tags
+      type: array
+      default:
+        - yandex
+        - docker
+    rules_config:
+      description: Gitlab CI rules
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          when: manual
+        - if: $CI_OPEN_MERGE_REQUESTS
+          when: never
+        - if: $CI_COMMIT_BRANCH
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+    allow_failure:
+      description: Allow job to fail
+      type: boolean
+      default: true
+    needs:
+      description: Job needs
+      type: array
+      default: []
+    scanners:
+      description: |
+        Security issues to detect.
+        Allowed values: vuln, misconfig, secret, license.
+        Specify multiple values separated by comma without spaces
+      default: vuln
+    severity:
+      description: |
+        Severities of security issues to be displayed.
+        Allowed values: UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL.
+        Specify multiple values separated by comma without spaces
+      default: HIGH,CRITICAL
+    ignore_unfixed:
+      description: Display only fixed vulnerabilities
+      type: boolean
+      default: true
+    trivy_image:
+      description: Docker image to use for scanning
+      type: string
+      default: "aquasec/trivy:latest"
+    image_to_scan:
+      description: Images to scan, one per line
+      type: string
+      default: ""
+    job_name:
+      description: Job name suffix
+      default: "images"
+    registry:
+      description: Container registry URL to authenticate e.g. "${CI_REGISTRY_IMAGE}"
+      type: string
+      default: ""
+    registry_user:
+      description: Container registry username e.g. "$CI_REGISTRY_USER"
+      default: ""
+    registry_password:
+      description: Container registry password like e.g. "$CI_REGISTRY_PASSWORD"
+      default: ""
+    sbom_format:
+      description: |
+        Output format for SBOM report.
+        Allowed values: cyclonedx, spdx, spdx-json, github
+      type: string
+      default: "cyclonedx"
+    report_format:
+      description: |
+        Output format for vulnerability report.
+        Allowed values: json, table, sarif, template, cosign-vuln
+      type: string
+      default: "json"
+---
+
+variables:
+  TRIVY_IMAGE: "$[[ inputs.trivy_image ]]"
+
+"trivy-$[[ inputs.job_name ]]":
+  image: 
+    name: $TRIVY_IMAGE
+    entrypoint: [""]
+  tags: $[[ inputs.runner_tags ]]
+  needs: $[[ inputs.needs ]]
+  stage: $[[ inputs.stage ]]
+  rules: $[[ inputs.rules_config ]]
+  variables:
+    TRIVY_AUTH_URL: $[[ inputs.registry ]]
+    TRIVY_USERNAME: $[[ inputs.registry_user ]]
+    TRIVY_PASSWORD: $[[ inputs.registry_password ]]
+    REPORT_PATH: "security-reports"
+    REPORT_SBOM: "sbom.json"
+    REPORT_TRIVY: "report.json"
+    TRIVY_NO_PROGRESS: "true"
+    TRIVY_SKIP_DB_UPDATE: "false"
+    TRIVY_SKIP_VERSION_CHECK: "true"
+    TRIVY_EXIT_CODE: "1"
+    TRIVY_SCANNERS: $[[ inputs.scanners ]]
+    TRIVY_IGNORE_UNFIXED: $[[ inputs.ignore_unfixed ]]
+    TRIVY_SEVERITY: $[[ inputs.severity ]]
+    IMAGE_TO_SCAN: "$[[ inputs.image_to_scan ]]"
+  script:
+    - mkdir -p "${REPORT_PATH}"
+    - name=$(echo "${IMAGE_TO_SCAN}" | sed 's|[@:].*||' | awk -F'/' '{print $NF}')
+    - trivy image --exit-code 0 --format $[[ inputs.sbom_format ]] --output "${REPORT_PATH}/${name}-${REPORT_SBOM}" "${IMAGE_TO_SCAN}"
+    - trivy image --format $[[ inputs.report_format ]] --output "${REPORT_PATH}/${name}-${REPORT_TRIVY}" "${IMAGE_TO_SCAN}"
+  artifacts:
+    when: always
+    expose_as: 'SCA Trivy Report'
+    paths:
+      - "$REPORT_PATH/"
+    expire_in: 1 week
+  allow_failure: $[[ inputs.allow_failure ]]
