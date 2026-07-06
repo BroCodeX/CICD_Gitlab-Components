@@ -11,6 +11,10 @@ spec:
       description: "Path to ansible dir from the repo root"
       type: string
       default: "./ansible"
+    ansible_user:
+      description: "SSH user for ansible connections"
+      type: string
+      default: "ansible"
     limit:
       description: "Limit to host or group names (comma separated)"
       type: string
@@ -62,7 +66,6 @@ spec:
 
 variables:
   ANSIBLE_FORCE_COLOR: "true"
-  ANSIBLE_USER: "ansible"
   ANSIBLE_DIR: $[[ inputs.ansible_dir ]]
 
 # =====
@@ -82,13 +85,13 @@ variables:
   variables:
     ANSIBLE_ARGS: >-
       --inventory $[[ inputs.inventory ]]
-      --limit $[[ inputs.limit ]]
-      --tags $[[ inputs.ansible_tags ]]
-      --user ${ANSIBLE_USER}
+      --user $[[ inputs.ansible_user ]]
       $[[ inputs.extra_args ]]
   stage: $[[ inputs.stage ]]
   needs: $[[ inputs.needs ]]
   script:
+    - if [ -n "$[[ inputs.limit ]]" ]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --limit $[[ inputs.limit ]]"; fi
+    - if [ -n "$[[ inputs.ansible_tags ]]" ]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --tags $[[ inputs.ansible_tags ]]"; fi
     - if $[[ inputs.has_vault ]]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --vault-password-file ${ANSIBLE_VAULT_PASSWORD_FILE}"; fi
     - |
       echo "=== Ansible configuration ==="
@@ -114,12 +117,12 @@ variables:
   variables:
     ANSIBLE_ARGS: >-
       --inventory $[[ inputs.inventory ]]
-      --limit $[[ inputs.limit ]]
-      --tags $[[ inputs.ansible_tags ]]
-      --user ${ANSIBLE_USER}
+      --user $[[ inputs.ansible_user ]]
       $[[ inputs.extra_args ]]
   stage: $[[ inputs.stage ]]
   script:
+    - if [ -n "$[[ inputs.limit ]]" ]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --limit $[[ inputs.limit ]]"; fi
+    - if [ -n "$[[ inputs.ansible_tags ]]" ]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --tags $[[ inputs.ansible_tags ]]"; fi
     - if $[[ inputs.has_vault ]]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --vault-password-file ${ANSIBLE_VAULT_PASSWORD_FILE}"; fi
     - ansible-playbook ${ANSIBLE_ARGS} $[[ inputs.playbook ]].yml --diff --become
   needs:
