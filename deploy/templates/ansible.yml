@@ -35,6 +35,10 @@ spec:
       description: "Use --vault-password-file"
       type: boolean
       default: false
+    become:
+      description: "Append --become (privilege escalation). Disable for local-only playbooks where the ansible image has no sudo."
+      type: boolean
+      default: true
     ansible_image:
       description: "Docker image with ansible (build your own and pass it here)"
       type: string
@@ -93,11 +97,12 @@ variables:
     - if [ -n "$[[ inputs.limit ]]" ]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --limit $[[ inputs.limit ]]"; fi
     - if [ -n "$[[ inputs.ansible_tags ]]" ]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --tags $[[ inputs.ansible_tags ]]"; fi
     - if $[[ inputs.has_vault ]]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --vault-password-file ${ANSIBLE_VAULT_PASSWORD_FILE}"; fi
+    - if $[[ inputs.become ]]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --become"; fi
     - |
       echo "=== Ansible configuration ==="
       printf '%s\n' "Playbook: $[[ inputs.playbook ]].yml"
       printf '%s\n' "Arguments: ${ANSIBLE_ARGS:-<none>}"
-    - ansible-playbook ${ANSIBLE_ARGS} $[[ inputs.playbook ]].yml --check --diff --become
+    - ansible-playbook ${ANSIBLE_ARGS} $[[ inputs.playbook ]].yml --check --diff
   rules: $[[ inputs.rules_config ]]
 
 # =====
@@ -124,7 +129,8 @@ variables:
     - if [ -n "$[[ inputs.limit ]]" ]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --limit $[[ inputs.limit ]]"; fi
     - if [ -n "$[[ inputs.ansible_tags ]]" ]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --tags $[[ inputs.ansible_tags ]]"; fi
     - if $[[ inputs.has_vault ]]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --vault-password-file ${ANSIBLE_VAULT_PASSWORD_FILE}"; fi
-    - ansible-playbook ${ANSIBLE_ARGS} $[[ inputs.playbook ]].yml --diff --become
+    - if $[[ inputs.become ]]; then ANSIBLE_ARGS="$ANSIBLE_ARGS --become"; fi
+    - ansible-playbook ${ANSIBLE_ARGS} $[[ inputs.playbook ]].yml --diff
   needs:
     - "$[[ inputs.playbook ]] - $[[ inputs.limit ]] - $[[ inputs.ansible_tags ]] - check"
   rules: $[[ inputs.rules_config ]]
