@@ -27,6 +27,12 @@ spec:
       description: Type of reports
       type: string
       default: "json"
+    config_file:
+      description: |
+        Path to KICS config file (e.g. kics-config.yaml).
+        Leave empty to run without --config flag.
+      type: string
+      default: ""
     severity:
       description: |
         Severities of security issues to be displayed.
@@ -50,6 +56,7 @@ spec:
 variables:
   SCAN_SEVERITY: "$[[ inputs.severity ]]"
   KICS_IMAGE: "$[[ inputs.kics_image ]]"
+  CONFIG_PATH: "$[[ inputs.config_file ]]"
 
 "kics-$[[ inputs.target ]]":
   stage: $[[ inputs.stage ]]
@@ -71,6 +78,16 @@ variables:
       fi
     - FAIL_ON_ARG="--fail-on $(echo "${SCAN_SEVERITY}" | tr '[:upper:]' '[:lower:]')"
     - |
+      if [ -n "${CONFIG_PATH}" ]; then
+        if [ ! -f "${CONFIG_PATH}" ]; then
+          echo "ERROR: Config file ${CONFIG_PATH} does not exist"
+          exit 1
+        fi
+        CONFIG_ARG="--config ${CONFIG_PATH}"
+      else
+        CONFIG_ARG=""
+      fi
+    - |
       kics scan \
         --path ./$[[ inputs.target ]] \
         --report-formats $[[ inputs.report_format ]] \
@@ -78,7 +95,8 @@ variables:
         --output-name kics-results \
         --no-progress \
         --exclude-paths ".git" \
-        ${FAIL_ON_ARG}
+        ${FAIL_ON_ARG} \
+        ${CONFIG_ARG}
   artifacts:
     when: always
     paths:
