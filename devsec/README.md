@@ -30,6 +30,7 @@ GitLab CI/CD components for security scanning pipelines.
 |---|---|
 | [checkov](/templates/checkov.yml) | Static code analysis for Ansible/Terraform (Checkov) |
 | [kics](/templates/kics.yml) | Static code analysis for Ansible/Terraform (KICS) |
+| [semgrep](/templates/semgrep.yml) | Static application security testing / SAST (Semgrep) |
 | [hadolint_scan](/templates/hadolint_scan.yml) | Dockerfile linting (Hadolint) |
 | [trivy_scan](/templates/trivy_scan.yml) | Container image vulnerability scanning (Trivy) |
 | [dockle_scan](/templates/dockle_scan.yml) | Docker image best-practice and CIS benchmark scanning (Dockle) |
@@ -113,6 +114,55 @@ include:
 | Job | Stage | Trigger |
 |---|---|---|
 | `kics-<target>` | `stage` | `rules_kics_config` |
+
+## [semgrep](/templates/semgrep.yml)
+
+Runs [Semgrep](https://semgrep.dev/) SAST scans. Supports Semgrep registry rulesets (`auto`, `p/secrets`, `p/ci`, ...) alongside custom rule directories/files, combined freely.
+
+### Usage
+
+```yaml
+include:
+  - component: $CI_SERVER_FQDN/components/devsec/semgrep@1
+    inputs:
+      target: src
+      configs: "auto,p/secrets"
+      custom_rules_dir: "sast-rules"
+      severity: ERROR,WARNING
+```
+
+### Inputs
+
+| Input | Description | Default |
+|---|---|---|
+| `job_name` | Job name suffix and report file naming | `code` |
+| `stage` | Job stage | `scan` |
+| `runner_tags` | Runner tags | `[yandex, docker]` |
+| `allow_failure` | Allow job to fail | `true` |
+| `needs` | Job needs | `[]` |
+| `semgrep_image` | Image for the Semgrep scanner | `semgrep/semgrep:latest` |
+| `target` | Path (relative to repo root) to scan | `.` |
+| `configs` | Rulesets to run, comma-separated (registry configs like `auto`, `p/secrets`, `p/ci`, or local paths) | `auto` |
+| `custom_rules_dir` | Path to a directory of custom Semgrep rule YAML files; every rule file in it is loaded. Leave empty to skip | `""` |
+| `custom_rules_files` | Specific custom rule files to load, comma-separated | `""` |
+| `exclude` | Glob patterns to exclude, comma-separated (`--exclude`) | `""` |
+| `include` | Glob patterns to restrict the scan to, comma-separated (`--include`) | `""` |
+| `severity` | Severities to report, comma-separated (`ERROR`, `WARNING`, `INFO`). Leave empty for all | `""` |
+| `fail_on_findings` | Fail the job when matching findings are found (`--error`) | `true` |
+| `output_format` | Report format saved as an artifact (`json` \| `sarif` \| `gitlab-sast` \| `junit-xml`) | `json` |
+| `extra_args` | Extra raw CLI args, appended as-is to the `semgrep` command | `""` |
+| `rules_config` | GitLab CI rules | MR manual + branch |
+
+### Jobs
+
+| Job | Stage | Trigger |
+|---|---|---|
+| `semgrep-<job_name>` | `stage` | `rules_config` |
+
+### Notes
+
+- `configs`, `custom_rules_dir`, and `custom_rules_files` are all additive — each becomes its own `--config` flag, so registry rulesets and custom rules run together in one scan.
+- A report is always saved to `security-reports/semgrep-<job_name>.<ext>` regardless of exit status; the job only fails afterwards if `fail_on_findings` is `true`.
 
 ## [hadolint_scan](/templates/hadolint_scan.yml)
 

@@ -1,0 +1,166 @@
+spec:
+  inputs:
+    job_name:
+      description: Job name suffix and report file naming
+      type: string
+      default: "code"
+    stage:
+      description: Job stage
+      default: scan
+    runner_tags:
+      description: Runner tags
+      type: array
+      default:
+        - yandex
+        - docker
+    allow_failure:
+      description: Allow job to fail
+      type: boolean
+      default: true
+    needs:
+      description: Job needs
+      type: array
+      default: []
+    semgrep_image:
+      description: Image for the Semgrep scanner
+      default: "semgrep/semgrep:latest"
+    target:
+      description: Path (relative to repo root) to scan
+      type: string
+      default: "."
+    configs:
+      description: |
+        Rulesets to run, comma-separated. Accepts Semgrep registry configs
+        (auto, p/secrets, p/ci, p/owasp-top-ten, ...) and local paths.
+        https://semgrep.dev/explore
+      type: string
+      default: "auto"
+    custom_rules_dir:
+      description: |
+        Path to a directory of custom Semgrep rule YAML files (relative to repo root).
+        Every rule file in the directory is loaded. Leave empty to skip.
+      type: string
+      default: ""
+    custom_rules_files:
+      description: |
+        Specific custom Semgrep rule files to load, comma-separated
+        (e.g. rules/sql-injection.yaml,rules/hardcoded-secrets.yaml).
+      type: string
+      default: ""
+    exclude:
+      description: Glob patterns to exclude from the scan, comma-separated (--exclude)
+      type: string
+      default: ""
+    include:
+      description: Glob patterns to restrict the scan to, comma-separated (--include)
+      type: string
+      default: ""
+    severity:
+      description: |
+        Severities to report, comma-separated (ERROR, WARNING, INFO).
+        Leave empty to report all severities.
+      type: string
+      default: ""
+    fail_on_findings:
+      description: Fail the job when matching findings are found (--error)
+      type: boolean
+      default: true
+    output_format:
+      description: |
+        Report format saved as an artifact.
+        Allowed values: json, sarif, gitlab-sast, junit-xml.
+      type: string
+      default: "json"
+    extra_args:
+      description: Any extra raw CLI args, appended as-is to the semgrep command
+      type: string
+      default: ""
+    rules_config:
+      description: GitLab CI rules for the Semgrep job
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          when: manual
+        - if: $CI_OPEN_MERGE_REQUESTS
+          when: never
+        - if: $CI_COMMIT_BRANCH
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+---
+
+variables:
+  SEMGREP_IMAGE: "$[[ inputs.semgrep_image ]]"
+
+"semgrep-$[[ inputs.job_name ]]":
+  stage: $[[ inputs.stage ]]
+  tags: $[[ inputs.runner_tags ]]
+  needs: $[[ inputs.needs ]]
+  image:
+    name: $SEMGREP_IMAGE
+    entrypoint: [""]
+  variables:
+    REPORT_PATH: "security-reports"
+    SEMGREP_SEND_METRICS: "off"
+    SEMGREP_TARGET: "$[[ inputs.target ]]"
+    SEMGREP_CONFIGS: "$[[ inputs.configs ]]"
+    CUSTOM_RULES_DIR: "$[[ inputs.custom_rules_dir ]]"
+    CUSTOM_RULES_FILES: "$[[ inputs.custom_rules_files ]]"
+    SEMGREP_EXCLUDE: "$[[ inputs.exclude ]]"
+    SEMGREP_INCLUDE: "$[[ inputs.include ]]"
+    SEMGREP_SEVERITY: "$[[ inputs.severity ]]"
+    FAIL_ON_FINDINGS: "$[[ inputs.fail_on_findings ]]"
+    OUTPUT_FORMAT: "$[[ inputs.output_format ]]"
+    EXTRA_ARGS: "$[[ inputs.extra_args ]]"
+  rules: $[[ inputs.rules_config ]]
+  before_script:
+    - mkdir -p ${REPORT_PATH}
+  script:
+    - |
+      CONFIG_ARGS=()
+      IFS=',' read -ra CONFIGS <<< "${SEMGREP_CONFIGS}"
+      for c in "${CONFIGS[@]}"; do
+        [ -n "$c" ] && CONFIG_ARGS+=(--config "$c")
+      done
+      [ -n "${CUSTOM_RULES_DIR}" ] && CONFIG_ARGS+=(--config "${CUSTOM_RULES_DIR}")
+      IFS=',' read -ra RULE_FILES <<< "${CUSTOM_RULES_FILES}"
+      for f in "${RULE_FILES[@]}"; do
+        [ -n "$f" ] && CONFIG_ARGS+=(--config "$f")
+      done
+
+      FILTER_ARGS=()
+      IFS=',' read -ra EXCLUDES <<< "${SEMGREP_EXCLUDE}"
+      for e in "${EXCLUDES[@]}"; do
+        [ -n "$e" ] && FILTER_ARGS+=(--exclude "$e")
+      done
+      IFS=',' read -ra INCLUDES <<< "${SEMGREP_INCLUDE}"
+      for i in "${INCLUDES[@]}"; do
+        [ -n "$i" ] && FILTER_ARGS+=(--include "$i")
+      done
+
+      SEVERITY_ARGS=()
+      IFS=',' read -ra SEVERITIES <<< "${SEMGREP_SEVERITY}"
+      for s in "${SEVERITIES[@]}"; do
+        [ -n "$s" ] && SEVERITY_ARGS+=(--severity "$s")
+      done
+
+      case "${OUTPUT_FORMAT}" in
+        sarif) FORMAT_ARG="--sarif"; REPORT_FILENAME="semgrep-$[[ inputs.job_name ]].sarif" ;;
+        gitlab-sast) FORMAT_ARG="--gitlab-sast"; REPORT_FILENAME="semgrep-$[[ inputs.job_name ]].json" ;;
+        junit-xml) FORMAT_ARG="--junit-xml"; REPORT_FILENAME="semgrep-$[[ inputs.job_name ]].xml" ;;
+        *) FORMAT_ARG="--json"; REPORT_FILENAME="semgrep-$[[ inputs.job_name ]].json" ;;
+      esac
+
+      echo "CONFIG_ARGS: ${CONFIG_ARGS[@]}"
+      semgrep scan "${CONFIG_ARGS[@]}" "${FILTER_ARGS[@]}" "${SEVERITY_ARGS[@]}" ${EXTRA_ARGS} ${FORMAT_ARG} --output "${REPORT_PATH}/${REPORT_FILENAME}" "${SEMGREP_TARGET}"
+      test -f "${REPORT_PATH}/${REPORT_FILENAME}" || { echo "[FAIL] Semgrep report not created"; exit 1; }
+
+      if [ "${FAIL_ON_FINDINGS}" = "true" ]; then
+        semgrep scan "${CONFIG_ARGS[@]}" "${FILTER_ARGS[@]}" "${SEVERITY_ARGS[@]}" ${EXTRA_ARGS} --error "${SEMGREP_TARGET}"
+      fi
+  artifacts:
+    expose_as: 'SAST Semgrep Report'
+    when: always
+    paths:
+      - "$REPORT_PATH/"
+    expire_in: 1 week
+  allow_failure: $[[ inputs.allow_failure ]]
