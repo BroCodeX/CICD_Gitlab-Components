@@ -49,8 +49,16 @@ spec:
       description: Docker image to use for scanning
       type: string
       default: "aquasec/trivy:latest"
-    image_to_scan:
-      description: Images to scan, one per line
+    scan_type:
+      description: |
+        Trivy scan target type.
+        Allowed values: image (Container Image), fs (Filesystem), repo (Code Repository)
+      type: string
+      default: "image"
+    target:
+      description: |
+        Target to scan, depending on scan_type:
+        image - image reference(s), fs - filesystem path, repo - repository path or URL
       type: string
       default: ""
     job_name:
@@ -105,12 +113,12 @@ variables:
     TRIVY_SCANNERS: $[[ inputs.scanners ]]
     TRIVY_IGNORE_UNFIXED: $[[ inputs.ignore_unfixed ]]
     TRIVY_SEVERITY: $[[ inputs.severity ]]
-    IMAGE_TO_SCAN: "$[[ inputs.image_to_scan ]]"
+    TARGET: "$[[ inputs.target ]]"
   script:
     - mkdir -p "${REPORT_PATH}"
-    - name=$(echo "${IMAGE_TO_SCAN}" | sed 's|[@:].*||' | awk -F'/' '{print $NF}')
-    - trivy image --exit-code 0 --format $[[ inputs.sbom_format ]] --output "${REPORT_PATH}/${name}-${REPORT_SBOM}" "${IMAGE_TO_SCAN}"
-    - trivy image --format $[[ inputs.report_format ]] --output "${REPORT_PATH}/${name}-${REPORT_TRIVY}" "${IMAGE_TO_SCAN}"
+    - name=$(echo "${TARGET}" | sed 's|[@:].*||' | awk -F'/' '{print $NF}')
+    - trivy $[[ inputs.scan_type ]] --exit-code 0 --format $[[ inputs.sbom_format ]] --output "${REPORT_PATH}/${name}-${REPORT_SBOM}" "${TARGET}"
+    - trivy $[[ inputs.scan_type ]] --format $[[ inputs.report_format ]] --output "${REPORT_PATH}/${name}-${REPORT_TRIVY}" "${TARGET}"
   artifacts:
     when: always
     expose_as: 'SCA Trivy Report'
