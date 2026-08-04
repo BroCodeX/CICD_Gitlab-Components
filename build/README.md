@@ -96,3 +96,6 @@ include:
 | `dockerfile_dir` | Path to directory with Dockerfile | `./docker` | no |
 | `dockerfile_name` | Dockerfile name inside `dockerfile_dir` | `Dockerfile` | no |
 | `image_name` | Image name, e.g. `nginx` or `app` | — | yes |
+| `tag` | Image tag | `${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}` | no |
+| `latest_image_tag` | Additional image tag | `${CI_COMMIT_REF_SLUG}-latest` | no |
+| `push_to_latest` | Also push `latest_image_tag` | `false` | no |

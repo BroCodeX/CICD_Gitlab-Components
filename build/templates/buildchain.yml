@@ -15,6 +15,16 @@ spec:
       default: "Dockerfile"
     image_name:
       description: Image name like 'nginx' or 'app'
+    tag:
+      description: Image tag
+      default: "${CI_COMMIT_REF_SLUG}-${CI_PIPELINE_ID}"
+    latest_image_tag:
+      description: Image tag with 'latest' suffix. Pushed if push_to_latest is true
+      default: "${CI_COMMIT_REF_SLUG}-latest"
+    push_to_latest:
+      description: If true push image also to latest_image_tag
+      type: boolean
+      default: false
     registry:
       description: "Container registry URL to authenticate against"
       type: string
@@ -49,7 +59,9 @@ include:
       dockerfile_dir: $[[ inputs.dockerfile_dir ]]
       dockerfile_name: $[[ inputs.dockerfile_name ]]
       image_name: $[[ inputs.image_name ]]
-      push_to_latest: true
+      tag: $[[ inputs.tag ]]
+      latest_image_tag: $[[ inputs.latest_image_tag ]]
+      push_to_latest: $[[ inputs.push_to_latest ]]
       registry: $[[ inputs.registry ]]
       registry_user: $[[ inputs.registry_user ]]
       registry_password: $[[ inputs.registry_password ]]
