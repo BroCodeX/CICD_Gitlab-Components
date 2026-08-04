@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0 (2026-08-04)
+### Updated
+- Добавлен `Gitleaks`.
+
 ## 1.1.2 (2026-07-28)
 ### Updated
 - Добавлен `Semgrep`, обновлен Kics

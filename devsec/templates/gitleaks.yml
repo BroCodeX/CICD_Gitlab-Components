@@ -1,0 +1,140 @@
+spec:
+  inputs:
+    stage:
+      description: Job stage
+      default: scan
+    runner_tags:
+      description: Runner tags
+      type: array
+      default:
+        - yandex
+        - docker
+    allow_failure:
+      description: Allow job to fail
+      type: boolean
+      default: true
+    needs:
+      description: Job needs
+      type: array
+      default: []
+    job_name:
+      description: Job name suffix
+      default: "scan"
+    target_type:
+      description: |
+        What to scan.
+        Allowed values: dir, git.
+      type: string
+      default: dir
+    target:
+      description: Path to the directory or git repository to scan
+      type: string
+      default: "."
+    gitleaks_image:
+      description: Image for gitleaks scanner
+      default: "zricethezav/gitleaks:latest"
+    report_format:
+      description: |
+        Output format for the report.
+        Allowed values: json, csv, sarif, junit.
+      type: string
+      default: "json"
+    config_file:
+      description: |
+        Path to a gitleaks config file (--config).
+        Leave empty to use the default gitleaks config.
+      type: string
+      default: ""
+    redact:
+      description: Redact secrets from the report (--redact)
+      type: boolean
+      default: true
+    log_level:
+      description: |
+        Log level for gitleaks output.
+        Allowed values: trace, debug, info, warn, error, fatal.
+      type: string
+      default: "info"
+    verbose:
+      description: Show verbose output from scan (--verbose)
+      type: boolean
+      default: true
+    exit_code:
+      description: Exit code when leaks have been encountered (--exit-code)
+      type: number
+      default: 1
+    gitleaks_ignore_path:
+      description: Path to .gitleaksignore file or folder containing one (--gitleaks-ignore-path)
+      type: string
+      default: "."
+    rules_gitleaks_config:
+      description: GitLab CI rules for the Gitleaks job
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          when: manual
+        - if: $CI_OPEN_MERGE_REQUESTS
+          when: never
+        - if: $CI_COMMIT_BRANCH
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
+---
+
+variables:
+  GITLEAKS_IMAGE: "$[[ inputs.gitleaks_image ]]"
+  SCAN_TARGET_TYPE: "$[[ inputs.target_type ]]"
+  SCAN_TARGET: "$[[ inputs.target ]]"
+  CONFIG_PATH: "$[[ inputs.config_file ]]"
+  REDACT: "$[[ inputs.redact ]]"
+  LOG_LEVEL: "$[[ inputs.log_level ]]"
+  VERBOSE: "$[[ inputs.verbose ]]"
+  EXIT_CODE: "$[[ inputs.exit_code ]]"
+  GITLEAKS_IGNORE_PATH: "$[[ inputs.gitleaks_ignore_path ]]"
+
+"gitleaks-$[[ inputs.job_name ]]":
+  stage: $[[ inputs.stage ]]
+  tags: $[[ inputs.runner_tags ]]
+  needs: $[[ inputs.needs ]]
+  variables:
+    REPORT_PATH: "security-reports"
+    REPORT_NAME: "gitleaks-report.$[[ inputs.report_format ]]"
+  before_script:
+    - mkdir -p ${REPORT_PATH}
+  image:
+    name: $GITLEAKS_IMAGE
+    entrypoint: [""]
+  rules: $[[ inputs.rules_gitleaks_config ]]
+  script:
+    - |
+      if [ "${SCAN_TARGET_TYPE}" != "dir" ] && [ "${SCAN_TARGET_TYPE}" != "git" ]; then
+        echo "ERROR: target_type must be 'dir' or 'git', got '${SCAN_TARGET_TYPE}'"
+        exit 1
+      fi
+    - |
+      if [ ! -e "${SCAN_TARGET}" ]; then
+        echo "ERROR: Target ${SCAN_TARGET} does not exist"
+        exit 1
+      fi
+    - |
+      GITLEAKS_ARGS=(
+        "${SCAN_TARGET_TYPE}" "${SCAN_TARGET}"
+        --report-format "$[[ inputs.report_format ]]"
+        --report-path "${REPORT_PATH}/${REPORT_NAME}"
+        --log-level "${LOG_LEVEL}"
+        --exit-code "${EXIT_CODE}"
+        --gitleaks-ignore-path "${GITLEAKS_IGNORE_PATH}"
+      )
+
+      [ -n "${CONFIG_PATH}" ] && GITLEAKS_ARGS+=(--config "${CONFIG_PATH}")
+      [ "${REDACT}" = "true" ] && GITLEAKS_ARGS+=(--redact)
+      [ "${VERBOSE}" = "true" ] && GITLEAKS_ARGS+=(--verbose)
+
+      echo GITLEAKS_ARGS: "${GITLEAKS_ARGS[@]}"
+      gitleaks "${GITLEAKS_ARGS[@]}"
+  artifacts:
+    expose_as: 'Gitleaks Report'
+    when: always
+    paths:
+      - "$REPORT_PATH/"
+    expire_in: 1 week
+  allow_failure: $[[ inputs.allow_failure ]]
