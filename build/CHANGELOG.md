@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0 (2026-08-04)
+### Updated
+- Обновлен `BuildChain` - добавлены варсы для registry.
+
 ## 1.1.0 (2026-07-25)
 ### Updated
 - Обновлен `Readme`.

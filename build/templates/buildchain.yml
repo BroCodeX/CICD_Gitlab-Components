@@ -15,6 +15,18 @@ spec:
       default: "Dockerfile"
     image_name:
       description: Image name like 'nginx' or 'app'
+    registry:
+      description: "Container registry URL to authenticate against"
+      type: string
+      default: "${CI_REGISTRY_IMAGE}"
+    registry_user:
+      description: "Registry username"
+      type: string
+      default: $CI_REGISTRY_USER
+    registry_password:
+      description: "Registry password or token"
+      type: string
+      default: $CI_REGISTRY_PASSWORD
 ---
 
 include:
@@ -38,5 +50,8 @@ include:
       dockerfile_name: $[[ inputs.dockerfile_name ]]
       image_name: $[[ inputs.image_name ]]
       push_to_latest: true
+      registry: $[[ inputs.registry ]]
+      registry_user: $[[ inputs.registry_user ]]
+      registry_password: $[[ inputs.registry_password ]]
       needs:
         - "hadolint-$[[ inputs.dockerfile_name ]]-$[[ inputs.image_name ]]"
