@@ -37,6 +37,17 @@ spec:
       description: "Registry password or token"
       type: string
       default: $CI_REGISTRY_PASSWORD
+    rules_config:
+      description: Gitlab CI rules
+      type: array
+      default:
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+          when: manual
+        - if: $CI_OPEN_MERGE_REQUESTS
+          when: never
+        - if: $CI_COMMIT_BRANCH
+        - if: $CI_PIPELINE_SOURCE == "web"
+          when: manual
 ---
 
 include:
@@ -49,6 +60,7 @@ include:
       dockerfile_dir: $[[ inputs.dockerfile_dir ]]
       dockerfile_name: $[[ inputs.dockerfile_name ]]
       allow_failure: false
+      rules_config: $[[ inputs.rules_config ]]
 
   # Build image
   - component: $CI_SERVER_FQDN/components/build/build@1
@@ -65,5 +77,6 @@ include:
       registry: $[[ inputs.registry ]]
       registry_user: $[[ inputs.registry_user ]]
       registry_password: $[[ inputs.registry_password ]]
+      rules_config: $[[ inputs.rules_config ]]
       needs:
         - "hadolint-$[[ inputs.dockerfile_name ]]-$[[ inputs.image_name ]]"
