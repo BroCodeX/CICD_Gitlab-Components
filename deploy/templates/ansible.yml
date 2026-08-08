@@ -68,10 +68,6 @@ spec:
           when: manual
 ---
 
-variables:
-  ANSIBLE_FORCE_COLOR: "true"
-  ANSIBLE_DIR: $[[ inputs.ansible_dir ]]
-
 # =====
 # Check diff playbook
 # =====
@@ -87,6 +83,8 @@ variables:
     - cat "$SSH_KNOWN_HOSTS" | base64 -d > ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   variables:
+    ANSIBLE_FORCE_COLOR: "true"
+    ANSIBLE_DIR: $[[ inputs.ansible_dir ]]
     ANSIBLE_ARGS: >-
       --inventory $[[ inputs.inventory ]]
       --user $[[ inputs.ansible_user ]]
@@ -120,6 +118,8 @@ variables:
     - cat "$SSH_KNOWN_HOSTS" | base64 -d > ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   variables:
+    ANSIBLE_FORCE_COLOR: "true"
+    ANSIBLE_DIR: $[[ inputs.ansible_dir ]]
     ANSIBLE_ARGS: >-
       --inventory $[[ inputs.inventory ]]
       --user $[[ inputs.ansible_user ]]

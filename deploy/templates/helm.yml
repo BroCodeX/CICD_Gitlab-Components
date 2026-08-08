@@ -111,21 +111,20 @@ spec:
       default: true
 ---
 
-variables:
-  HELM_RELEASE: "$[[ inputs.release ]]"
-  HELM_CHART: "$[[ inputs.chart ]]"
-  HELM_NAMESPACE: "$[[ inputs.namespace ]]"
-  HELM_DIR: "$[[ inputs.helm_dir ]]"
-  HELM_ARGS: >-
-    --namespace $[[ inputs.namespace ]]
-    $[[ inputs.extra_args ]]
-
 # =====
 # Lint
 # =====
 "$[[ inputs.release ]] - lint":
   image: $[[ inputs.helm_image ]]
   tags: $[[ inputs.runner_tags ]]
+  variables:
+    HELM_RELEASE: "$[[ inputs.release ]]"
+    HELM_CHART: "$[[ inputs.chart ]]"
+    HELM_NAMESPACE: "$[[ inputs.namespace ]]"
+    HELM_DIR: "$[[ inputs.helm_dir ]]"
+    HELM_ARGS: >-
+      --namespace $[[ inputs.namespace ]]
+      $[[ inputs.extra_args ]]
   before_script:
     - cd ${HELM_DIR}
     - helm version
@@ -161,6 +160,14 @@ variables:
 "$[[ inputs.release ]] - diff":
   image: $[[ inputs.helm_image ]]
   tags: $[[ inputs.runner_tags ]]
+  variables:
+    HELM_RELEASE: "$[[ inputs.release ]]"
+    HELM_CHART: "$[[ inputs.chart ]]"
+    HELM_NAMESPACE: "$[[ inputs.namespace ]]"
+    HELM_DIR: "$[[ inputs.helm_dir ]]"
+    HELM_ARGS: >-
+      --namespace $[[ inputs.namespace ]]
+      $[[ inputs.extra_args ]]
   before_script:
     - cd ${HELM_DIR}
     - helm version
@@ -195,6 +202,14 @@ variables:
 "$[[ inputs.release ]] - apply":
   image: $[[ inputs.helm_image ]]
   tags: $[[ inputs.runner_tags ]]
+  variables:
+    HELM_RELEASE: "$[[ inputs.release ]]"
+    HELM_CHART: "$[[ inputs.chart ]]"
+    HELM_NAMESPACE: "$[[ inputs.namespace ]]"
+    HELM_DIR: "$[[ inputs.helm_dir ]]"
+    HELM_ARGS: >-
+      --namespace $[[ inputs.namespace ]]
+      $[[ inputs.extra_args ]]
   before_script:
     - cd ${HELM_DIR}
     - helm version
@@ -229,6 +244,14 @@ variables:
 "$[[ inputs.release ]] - uninstall":
   image: $[[ inputs.helm_image ]]
   tags: $[[ inputs.runner_tags ]]
+  variables:
+    HELM_RELEASE: "$[[ inputs.release ]]"
+    HELM_CHART: "$[[ inputs.chart ]]"
+    HELM_NAMESPACE: "$[[ inputs.namespace ]]"
+    HELM_DIR: "$[[ inputs.helm_dir ]]"
+    HELM_ARGS: >-
+      --namespace $[[ inputs.namespace ]]
+      $[[ inputs.extra_args ]]
   before_script:
     - cd ${HELM_DIR}
     - helm version

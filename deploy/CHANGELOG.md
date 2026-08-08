@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1 (2026-08-08)
+### Updated
+- Удалены extended во всех `deploy` компонентах.
+
 ## 1.1.1 (2026-07-06)
 ### Updated
 - Обновлен `Ansible`.

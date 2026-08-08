@@ -84,31 +84,30 @@ spec:
           when: manual
 ---
 
-variables:
-  TF_IN_AUTOMATION: "true"
-  TF_PARALLELISM: "$[[ inputs.terraform_parallelism ]]"
-  TF_PLUGIN_CACHE_DIR: "$[[ inputs.tf_plugin_cache_dir ]]"
-  TERRAFORM_DIR: $[[ inputs.terraform_dir ]]
-  TF_MODULE: $[[ inputs.module ]]
-  TF_PLAN_FILE: "$[[ inputs.plan_file ]]"
-  TF_CLI_CONFIG: "$[[ inputs.terraform_cli_config ]]"
-  TF_INIT_ARGS: "$[[ inputs.extra_init_args ]]"
-  TF_PLAN_ARGS: "$[[ inputs.extra_plan_args ]]"
-  TF_APPLY_ARGS: "$[[ inputs.extra_apply_args ]]"
-  TF_DESTROY_ARGS: "$[[ inputs.extra_destroy_args ]]"
-
-.terraform_base:
+# =====
+# Validate
+# =====
+"$[[ inputs.module ]] - validate":
   image:
     name: $[[ inputs.terraform_image ]]
     entrypoint: [""]
   tags: $[[ inputs.runner_tags ]]
-  before_script: &before_script_terraform
+  variables:
+    TF_IN_AUTOMATION: "true"
+    TF_PARALLELISM: "$[[ inputs.terraform_parallelism ]]"
+    TF_PLUGIN_CACHE_DIR: "$[[ inputs.tf_plugin_cache_dir ]]"
+    TERRAFORM_DIR: $[[ inputs.terraform_dir ]]
+    TF_MODULE: $[[ inputs.module ]]
+    TF_PLAN_FILE: "$[[ inputs.plan_file ]]"
+    TF_CLI_CONFIG: "$[[ inputs.terraform_cli_config ]]"
+    TF_INIT_ARGS: "$[[ inputs.extra_init_args ]]"
+  before_script:
     - mkdir -p ${TF_PLUGIN_CACHE_DIR}
     - if [ -n "${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}" ]; then export TF_CLI_CONFIG_FILE="${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}"; fi
     - cd ${TERRAFORM_DIR}/${TF_MODULE}
     - terraform --version
     - terraform init -input=false ${TF_INIT_ARGS}
-  cache: &tf_cache
+  cache:
     key:
       files:
         - $CI_PROJECT_DIR/$[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform.lock.hcl
@@ -116,16 +115,8 @@ variables:
       - ${TF_PLUGIN_CACHE_DIR}
       - $[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform
     policy: pull-push
-
-# =====
-# Validate
-# =====
-"$[[ inputs.module ]] - validate":
-  extends: .terraform_base
   stage: $[[ inputs.validate_stage ]]
   needs: $[[ inputs.needs ]]
-  before_script: *before_script_terraform
-  cache: *tf_cache
   script:
     - terraform validate
   rules: $[[ inputs.rules_config ]]
@@ -134,10 +125,35 @@ variables:
 # Plan
 # =====
 "$[[ inputs.module ]] - plan":
-  extends: .terraform_base
+  image:
+    name: $[[ inputs.terraform_image ]]
+    entrypoint: [""]
+  tags: $[[ inputs.runner_tags ]]
+  variables:
+    TF_IN_AUTOMATION: "true"
+    TF_PARALLELISM: "$[[ inputs.terraform_parallelism ]]"
+    TF_PLUGIN_CACHE_DIR: "$[[ inputs.tf_plugin_cache_dir ]]"
+    TERRAFORM_DIR: $[[ inputs.terraform_dir ]]
+    TF_MODULE: $[[ inputs.module ]]
+    TF_PLAN_FILE: "$[[ inputs.plan_file ]]"
+    TF_CLI_CONFIG: "$[[ inputs.terraform_cli_config ]]"
+    TF_INIT_ARGS: "$[[ inputs.extra_init_args ]]"
+    TF_PLAN_ARGS: "$[[ inputs.extra_plan_args ]]"
+  before_script:
+    - mkdir -p ${TF_PLUGIN_CACHE_DIR}
+    - if [ -n "${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}" ]; then export TF_CLI_CONFIG_FILE="${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}"; fi
+    - cd ${TERRAFORM_DIR}/${TF_MODULE}
+    - terraform --version
+    - terraform init -input=false ${TF_INIT_ARGS}
+  cache:
+    key:
+      files:
+        - $CI_PROJECT_DIR/$[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform.lock.hcl
+    paths:
+      - ${TF_PLUGIN_CACHE_DIR}
+      - $[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform
+    policy: pull-push
   stage: $[[ inputs.plan_stage ]]
-  before_script: *before_script_terraform
-  cache: *tf_cache
   script:
     - |
       echo "=== Terraform plan ==="
@@ -157,12 +173,35 @@ variables:
 # Apply
 # =====
 "$[[ inputs.module ]] - apply":
-  extends: .terraform_base
-  stage: $[[ inputs.stage ]]
-  before_script: *before_script_terraform
+  image:
+    name: $[[ inputs.terraform_image ]]
+    entrypoint: [""]
+  tags: $[[ inputs.runner_tags ]]
+  variables:
+    TF_IN_AUTOMATION: "true"
+    TF_PARALLELISM: "$[[ inputs.terraform_parallelism ]]"
+    TF_PLUGIN_CACHE_DIR: "$[[ inputs.tf_plugin_cache_dir ]]"
+    TERRAFORM_DIR: $[[ inputs.terraform_dir ]]
+    TF_MODULE: $[[ inputs.module ]]
+    TF_PLAN_FILE: "$[[ inputs.plan_file ]]"
+    TF_CLI_CONFIG: "$[[ inputs.terraform_cli_config ]]"
+    TF_INIT_ARGS: "$[[ inputs.extra_init_args ]]"
+    TF_APPLY_ARGS: "$[[ inputs.extra_apply_args ]]"
+  before_script:
+    - mkdir -p ${TF_PLUGIN_CACHE_DIR}
+    - if [ -n "${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}" ]; then export TF_CLI_CONFIG_FILE="${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}"; fi
+    - cd ${TERRAFORM_DIR}/${TF_MODULE}
+    - terraform --version
+    - terraform init -input=false ${TF_INIT_ARGS}
   cache:
-    <<: *tf_cache
+    key:
+      files:
+        - $CI_PROJECT_DIR/$[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform.lock.hcl
+    paths:
+      - ${TF_PLUGIN_CACHE_DIR}
+      - $[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform
     policy: pull
+  stage: $[[ inputs.stage ]]
   script:
     - terraform apply -parallelism=${TF_PARALLELISM} -auto-approve ${TF_APPLY_ARGS} ${TF_PLAN_FILE}
   needs:
@@ -174,12 +213,35 @@ variables:
 # Destroy
 # =====
 "$[[ inputs.module ]] - destroy":
-  extends: .terraform_base
-  stage: $[[ inputs.stage ]]
-  before_script: *before_script_terraform
+  image:
+    name: $[[ inputs.terraform_image ]]
+    entrypoint: [""]
+  tags: $[[ inputs.runner_tags ]]
+  variables:
+    TF_IN_AUTOMATION: "true"
+    TF_PARALLELISM: "$[[ inputs.terraform_parallelism ]]"
+    TF_PLUGIN_CACHE_DIR: "$[[ inputs.tf_plugin_cache_dir ]]"
+    TERRAFORM_DIR: $[[ inputs.terraform_dir ]]
+    TF_MODULE: $[[ inputs.module ]]
+    TF_PLAN_FILE: "$[[ inputs.plan_file ]]"
+    TF_CLI_CONFIG: "$[[ inputs.terraform_cli_config ]]"
+    TF_INIT_ARGS: "$[[ inputs.extra_init_args ]]"
+    TF_DESTROY_ARGS: "$[[ inputs.extra_destroy_args ]]"
+  before_script:
+    - mkdir -p ${TF_PLUGIN_CACHE_DIR}
+    - if [ -n "${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}" ]; then export TF_CLI_CONFIG_FILE="${CI_PROJECT_DIR}/${TERRAFORM_DIR}/${TF_CLI_CONFIG}"; fi
+    - cd ${TERRAFORM_DIR}/${TF_MODULE}
+    - terraform --version
+    - terraform init -input=false ${TF_INIT_ARGS}
   cache:
-    <<: *tf_cache
+    key:
+      files:
+        - $CI_PROJECT_DIR/$[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform.lock.hcl
+    paths:
+      - ${TF_PLUGIN_CACHE_DIR}
+      - $[[ inputs.terraform_dir ]]/$[[ inputs.module ]]/.terraform
     policy: pull
+  stage: $[[ inputs.stage ]]
   script:
     - terraform destroy -parallelism=${TF_PARALLELISM} -auto-approve ${TF_DESTROY_ARGS}
   needs:
