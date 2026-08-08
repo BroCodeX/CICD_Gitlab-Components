@@ -120,7 +120,10 @@ variables:
     --namespace $[[ inputs.namespace ]]
     $[[ inputs.extra_args ]]
 
-.helm_base:
+# =====
+# Lint
+# =====
+"$[[ inputs.release ]] - lint":
   image: $[[ inputs.helm_image ]]
   tags: $[[ inputs.runner_tags ]]
   before_script:
@@ -139,12 +142,6 @@ variables:
     - HELM_ARGS="${HELM_ARGS} ${HELM_KUBE}"
     - if [ -n "$[[ inputs.chart_version ]]" ]; then HELM_ARGS="${HELM_ARGS} --version $[[ inputs.chart_version ]]"; fi
     - for f in $[[ inputs.values ]]; do HELM_ARGS="${HELM_ARGS} -f ${f}"; done
-
-# =====
-# Lint
-# =====
-"$[[ inputs.release ]] - lint":
-  extends: .helm_base
   stage: $[[ inputs.stage ]]
   needs: $[[ inputs.needs ]]
   script:
@@ -162,7 +159,24 @@ variables:
 # Diff
 # =====
 "$[[ inputs.release ]] - diff":
-  extends: .helm_base
+  image: $[[ inputs.helm_image ]]
+  tags: $[[ inputs.runner_tags ]]
+  before_script:
+    - cd ${HELM_DIR}
+    - helm version
+    # Kube target flags, kept separate so the uninstall job can reuse them.
+    - HELM_KUBE=""
+    - if [ -n "$[[ inputs.kube_context ]]" ]; then HELM_KUBE="${HELM_KUBE} --kube-context $[[ inputs.kube_context ]]"; fi
+    - |
+      if [ -n "$[[ inputs.kubeconfig ]]" ]; then
+        KUBECONFIG_DECODED="$(mktemp)"
+        base64 -d "$[[ inputs.kubeconfig ]]" > "${KUBECONFIG_DECODED}"
+        HELM_KUBE="${HELM_KUBE} --kubeconfig ${KUBECONFIG_DECODED}"
+      fi
+    # Concatenate optional shared flags into HELM_ARGS.
+    - HELM_ARGS="${HELM_ARGS} ${HELM_KUBE}"
+    - if [ -n "$[[ inputs.chart_version ]]" ]; then HELM_ARGS="${HELM_ARGS} --version $[[ inputs.chart_version ]]"; fi
+    - for f in $[[ inputs.values ]]; do HELM_ARGS="${HELM_ARGS} -f ${f}"; done
   stage: $[[ inputs.stage ]]
   needs:
     - "$[[ inputs.release ]] - lint"
@@ -179,7 +193,24 @@ variables:
 # Apply
 # =====
 "$[[ inputs.release ]] - apply":
-  extends: .helm_base
+  image: $[[ inputs.helm_image ]]
+  tags: $[[ inputs.runner_tags ]]
+  before_script:
+    - cd ${HELM_DIR}
+    - helm version
+    # Kube target flags, kept separate so the uninstall job can reuse them.
+    - HELM_KUBE=""
+    - if [ -n "$[[ inputs.kube_context ]]" ]; then HELM_KUBE="${HELM_KUBE} --kube-context $[[ inputs.kube_context ]]"; fi
+    - |
+      if [ -n "$[[ inputs.kubeconfig ]]" ]; then
+        KUBECONFIG_DECODED="$(mktemp)"
+        base64 -d "$[[ inputs.kubeconfig ]]" > "${KUBECONFIG_DECODED}"
+        HELM_KUBE="${HELM_KUBE} --kubeconfig ${KUBECONFIG_DECODED}"
+      fi
+    # Concatenate optional shared flags into HELM_ARGS.
+    - HELM_ARGS="${HELM_ARGS} ${HELM_KUBE}"
+    - if [ -n "$[[ inputs.chart_version ]]" ]; then HELM_ARGS="${HELM_ARGS} --version $[[ inputs.chart_version ]]"; fi
+    - for f in $[[ inputs.values ]]; do HELM_ARGS="${HELM_ARGS} -f ${f}"; done
   stage: $[[ inputs.stage ]]
   script:
     # Apply-only flags, not supported by helm-diff.
@@ -196,7 +227,24 @@ variables:
 # Uninstall (manual only)
 # =====
 "$[[ inputs.release ]] - uninstall":
-  extends: .helm_base
+  image: $[[ inputs.helm_image ]]
+  tags: $[[ inputs.runner_tags ]]
+  before_script:
+    - cd ${HELM_DIR}
+    - helm version
+    # Kube target flags, kept separate so the uninstall job can reuse them.
+    - HELM_KUBE=""
+    - if [ -n "$[[ inputs.kube_context ]]" ]; then HELM_KUBE="${HELM_KUBE} --kube-context $[[ inputs.kube_context ]]"; fi
+    - |
+      if [ -n "$[[ inputs.kubeconfig ]]" ]; then
+        KUBECONFIG_DECODED="$(mktemp)"
+        base64 -d "$[[ inputs.kubeconfig ]]" > "${KUBECONFIG_DECODED}"
+        HELM_KUBE="${HELM_KUBE} --kubeconfig ${KUBECONFIG_DECODED}"
+      fi
+    # Concatenate optional shared flags into HELM_ARGS.
+    - HELM_ARGS="${HELM_ARGS} ${HELM_KUBE}"
+    - if [ -n "$[[ inputs.chart_version ]]" ]; then HELM_ARGS="${HELM_ARGS} --version $[[ inputs.chart_version ]]"; fi
+    - for f in $[[ inputs.values ]]; do HELM_ARGS="${HELM_ARGS} -f ${f}"; done
   stage: $[[ inputs.stage ]]
   script:
     - |
