@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 (2026-10-29)
+### Updated
+- Обновлен `BuildChain` - добавлен runner_tags.
+
+
 ## 1.2.0 (2026-08-04)
 ### Updated
 - Обновлен `BuildChain` - добавлены варсы для registry.

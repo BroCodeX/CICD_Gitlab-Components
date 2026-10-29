@@ -37,6 +37,12 @@ spec:
       description: "Registry password or token"
       type: string
       default: $CI_REGISTRY_PASSWORD
+    runner_tags:
+      description: "GitLab runner tags"
+      type: array
+      default:
+        - yandex
+        - docker
     rules_config:
       description: Gitlab CI rules
       type: array
@@ -60,6 +66,7 @@ include:
       dockerfile_dir: $[[ inputs.dockerfile_dir ]]
       dockerfile_name: $[[ inputs.dockerfile_name ]]
       allow_failure: false
+      runner_tags: $[[ inputs.runner_tags ]]
       rules_config: $[[ inputs.rules_config ]]
 
   # Build image
@@ -77,6 +84,7 @@ include:
       registry: $[[ inputs.registry ]]
       registry_user: $[[ inputs.registry_user ]]
       registry_password: $[[ inputs.registry_password ]]
+      runner_tags: $[[ inputs.runner_tags ]]
       rules_config: $[[ inputs.rules_config ]]
       needs:
         - "hadolint-$[[ inputs.dockerfile_name ]]-$[[ inputs.image_name ]]"
