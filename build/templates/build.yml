@@ -89,6 +89,7 @@ variables:
     name: $BUILDKIT_IMAGE
     entrypoint: [""]
   variables:
+    BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
     BUILD_IMAGE: "$[[ inputs.registry ]]/$[[ inputs.image_name ]]"
     BUILD_TAG: "$[[ inputs.tag ]]"
     LATEST_BUILD_TAG: $[[ inputs.latest_image_tag ]]
