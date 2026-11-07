@@ -123,5 +123,5 @@ variables:
       EOF
     - echo "BUILDCTL_ARGS=${BUILDCTL_ARGS}"
   script:
-    - BUILDKITD_FLAGS=--config=/tmp/buildkit.toml buildctl-daemonless.sh build ${BUILDCTL_ARGS} ${BUILDCTL_EXTRA_ARGS}
+    - BUILDKITD_FLAGS="${BUILDKITD_FLAGS} --config=/tmp/buildkit.toml" buildctl-daemonless.sh build ${BUILDCTL_ARGS} ${BUILDCTL_EXTRA_ARGS}
   rules: $[[ inputs.rules_config ]]
